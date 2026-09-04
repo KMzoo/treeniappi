@@ -113,3 +113,11 @@ test('seed data integrity', () => {
   assert.equal(ROUTINE.length, 6);
   assert.equal(PRESETS.length, 4);
 });
+
+test('lastEntryFor: same-date sessions tie-break by completedAt (latest wins)', () => {
+  const sessions = [
+    { id: '2026-09-04-A', date: '2026-09-04', template: 'A', done: true, completedAt: '2026-09-04T10:00:00Z', entries: [{ exerciseId: 'leuanveto', variation: 'Leuanveto', sets: [{ reps: 5 }] }] },
+    { id: '2026-09-04-C', date: '2026-09-04', template: 'C', done: true, completedAt: '2026-09-04T18:00:00Z', entries: [{ exerciseId: 'leuanveto', variation: 'Leuanveto', sets: [{ reps: 7 }] }] }
+  ];
+  assert.equal(lastEntryFor(sessions, 'leuanveto', '2026-09-11').sets[0].reps, 7);
+});

@@ -57,7 +57,7 @@ export function sessionId(date, template) { return `${date}-${template}`; }
 export function lastEntryFor(sessions, exerciseId, beforeDate) {
   const candidates = sessions
     .filter(s => s.done && s.date < beforeDate)
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : String(b.completedAt || '').localeCompare(String(a.completedAt || ''))));
   for (const s of candidates) {
     const e = (s.entries || []).find(x => x.exerciseId === exerciseId && (x.sets || []).some(st => st.reps != null));
     if (e) return { date: s.date, variation: e.variation, sets: e.sets.filter(st => st.reps != null) };

@@ -130,6 +130,8 @@ select { appearance: none; -webkit-appearance: none; background-image: linear-gr
 .ex .title { font-size: 1.05rem; font-weight: 600; background: none; border: none; padding: 0; min-height: 0; color: var(--text); text-align: left; }
 .ex .title::after { content: " ⓘ"; color: var(--accent-2); font-weight: 400; font-size: 0.9rem; }
 .ex .last { margin: 6px 0; }
+.ex.prefilled input[type=number] { color: var(--muted); font-style: italic; }
+.ex.prefilled input[type=number]:focus { color: var(--text); font-style: normal; }
 .sets { display: grid; grid-template-columns: 56px 1fr 1fr; gap: 6px 8px; align-items: center; margin-top: 8px; }
 .sets.nowt { grid-template-columns: 56px 1fr; }
 .sets .lbl { color: var(--muted); font-size: 0.9rem; }

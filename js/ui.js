@@ -1,6 +1,6 @@
 // DOM-apurit. Ei frameworkia.
 
-const PROPS = new Set(['value', 'checked', 'disabled', 'selected', 'readOnly', 'textContent', 'innerHTML']);
+const PROPS = new Set(['value', 'checked', 'disabled', 'selected', 'readOnly', 'textContent']);
 
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);

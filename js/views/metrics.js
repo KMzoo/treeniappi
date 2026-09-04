@@ -1,6 +1,6 @@
 // Mittarit — aamupaino, vyötärö, leuanvedot, selän tuntemus + kaaviot + varmuuskopio.
 import { getAll, putMetric, del, metricKey, getSettings, setSetting, exportAll, importAll, clearAll } from '../db.js';
-import { todayStr, weeklyAverages, photoStatus, formatDateShort, formatDateFi, fmtNum, metricsToCsv, addDays } from '../logic.js';
+import { todayStr, weeklyAverages, photoStatus, formatDateShort, formatDateFi, fmtNum, metricsToCsv } from '../logic.js';
 import { h, clear, toast, numInput, download, confirmModal } from '../ui.js';
 import { lineChart } from '../chart.js';
 
@@ -22,22 +22,32 @@ export async function render(root) {
   const charts = h('div');
   async function reload() { metrics = await getAll('metrics'); drawCharts(); }
 
-  async function saveMetric(type, raw) {
-    if (raw === '' || raw == null) { await del('metrics', metricKey(type, today)); }
-    else {
+  /** raw: kentän arvo; badInput: selain hylkäsi syötteen (arvo '' vaikka kentässä on tekstiä). */
+  async function saveMetric(type, raw, badInput = false) {
+    if (badInput) { toast('Virheellinen luku — ei tallennettu', 2500); return false; }
+    const had = todayVal(type) != null;
+    if (raw === '' || raw == null) {
+      if (!had) return false;
+      await del('metrics', metricKey(type, today));
+      toast('Tämän päivän arvo poistettu');
+    } else {
       const v = Number(String(raw).replace(',', '.'));
-      if (isNaN(v)) return;
+      if (isNaN(v)) { toast('Virheellinen luku — ei tallennettu', 2500); return false; }
       await putMetric(type, today, v);
+      toast('Tallennettu');
     }
-    toast('Tallennettu');
     await reload();
+    return true;
   }
 
   // --- Tänään ---
   const inputs = TYPES.map(t => {
     const last = latest(t.type);
     const inp = numInput({ value: todayVal(t.type) ?? '', step: t.step, min: 0, placeholder: last ? fmtNum(last.value) : '', 'aria-label': t.label,
-      onchange: e => saveMetric(t.type, e.target.value) });
+      onchange: async e => {
+        const ok = await saveMetric(t.type, e.target.value, e.target.validity.badInput);
+        if (!ok) { const cur = todayVal(t.type); e.target.value = cur == null ? '' : cur; }
+      } });
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
     return h('label', { class: 'field' },
       h('span', {}, `${t.label}${t.unit ? ` (${t.unit})` : ''}`, last ? h('span', { class: 'muted' }, ` · viim. ${fmtNum(last.value)} ${formatDateShort(last.date)}`) : null),
@@ -103,7 +113,7 @@ export async function render(root) {
     const f = e.target.files[0]; if (!f) return;
     try {
       const data = JSON.parse(await f.text());
-      const replace = await confirmModal('Korvataanko nykyinen data kokonaan? "Ei" yhdistää varmuuskopion nykyiseen.', { ok: 'Korvaa', cancel: 'Yhdistä', danger: true });
+      const replace = await confirmModal('Korvataanko nykyinen data kokonaan varmuuskopiolla? "Yhdistä" lisää varmuuskopion rivit nykyiseen dataan.', { ok: 'Korvaa', cancel: 'Yhdistä', danger: true });
       const n = await importAll(data, { replace });
       toast(`Tuotu ${n} riviä`);
       location.reload();
@@ -128,6 +138,6 @@ export async function render(root) {
         if (await confirmModal('Poistetaanko KAIKKI data tästä laitteesta? Vie JSON ensin.', { ok: 'Poista kaikki', danger: true })) { await clearAll(); location.reload(); }
       } }, 'Tyhjennä kaikki')),
     fileInp,
-    h('p', { class: 'muted small mt' }, `Ohjelma v${settings.programVersion} · ${addDays(today, 0)}`)
+    h('p', { class: 'muted small mt' }, `Ohjelma v${settings.programVersion} · ${today}`)
   ));
 }

@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from './seed.js';
 
 const DB_NAME = 'treeniappi';
 const DB_VERSION = 1;
+export const BACKUP_FORMAT = 1;
 
 // store → { keyPath, indexes: [[name, keyPath]] }
 const STORES = {
@@ -30,22 +31,33 @@ export function open() {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => { dbPromise = null; reject(req.error); };
+    req.onblocked = () => { dbPromise = null; reject(new Error('Tietokanta on auki toisessa välilehdessä')); };
   });
   return dbPromise;
 }
 
+/**
+ * Suorita fn transaktiossa. Jos fn heittää, transaktio perutaan (abort) — muuten jo jonossa
+ * olevat kirjoitukset (esim. clear()) committoituisivat vaikka loput epäonnistuivat.
+ * fn:n paluuarvo (tai promise) on lopputulos; se ratkeaa ennen oncomplete-tapahtumaa.
+ */
 function tx(storeNames, mode, fn) {
   return open().then(db => new Promise((resolve, reject) => {
     const t = db.transaction(storeNames, mode);
-    let result;
+    let result, failed = null;
     t.oncomplete = () => resolve(result);
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
+    t.onerror = () => reject(failed || t.error);
+    t.onabort = () => reject(failed || t.error || new Error('Transaktio peruttiin'));
     const stores = Object.fromEntries([].concat(storeNames).map(n => [n, t.objectStore(n)]));
-    const r = fn(stores);
-    if (r && typeof r.then === 'function') r.then(v => { result = v; }).catch(reject);
-    else result = r;
+    try {
+      const r = fn(stores);
+      if (r && typeof r.then === 'function') r.then(v => { result = v; }).catch(e => { failed = e; try { t.abort(); } catch {} });
+      else result = r;
+    } catch (e) {
+      failed = e;
+      try { t.abort(); } catch {}
+    }
   }));
 }
 
@@ -79,22 +91,46 @@ export async function putMetric(type, date, value) {
   await put('metrics', { key: metricKey(type, date), type, date, value });
 }
 
-/** Koko tietokanta yhtenä JSON-oliona. */
+/** Koko tietokanta yhtenä JSON-oliona (yksi readonly-transaktio → yhtenäinen tilannekuva). */
 export async function exportAll() {
-  const out = { app: 'treeniappi', version: DB_VERSION, exportedAt: new Date().toISOString() };
-  for (const name of Object.keys(STORES)) out[name] = await getAll(name);
-  return out;
+  const names = Object.keys(STORES);
+  const rows = await tx(names, 'readonly', async stores => {
+    const out = {};
+    for (const n of names) out[n] = await reqToPromise(stores[n].getAll());
+    return out;
+  });
+  return { app: 'treeniappi', format: BACKUP_FORMAT, dbVersion: DB_VERSION, exportedAt: new Date().toISOString(), ...rows };
 }
 
-/** Tuo JSON. replace=true tyhjentää ensin; muuten yhdistää (samat avaimet korvataan). */
-export async function importAll(data, { replace = false } = {}) {
-  if (!data || data.app !== 'treeniappi') throw new Error('Ei Treeniappi-varmuuskopio');
-  const names = Object.keys(STORES);
+/**
+ * Tarkista varmuuskopio ENNEN kirjoittamista. Palauttaa rivimäärän tai heittää selkokielisen virheen.
+ * Puhdas funktio — ei IndexedDB:tä — jotta se on testattavissa Nodessa.
+ */
+export function validateBackup(data) {
+  if (!data || typeof data !== 'object' || data.app !== 'treeniappi') throw new Error('Ei Treeniappi-varmuuskopio');
   let count = 0;
+  for (const [name, def] of Object.entries(STORES)) {
+    const rows = data[name];
+    if (rows == null) continue;
+    if (!Array.isArray(rows)) throw new Error(`Virheellinen varmuuskopio: ${name} ei ole lista`);
+    rows.forEach((row, i) => {
+      if (!row || typeof row !== 'object' || row[def.keyPath] == null) {
+        throw new Error(`Virheellinen varmuuskopio: ${name}[${i}] puuttuu avain "${def.keyPath}"`);
+      }
+    });
+    count += rows.length;
+  }
+  return count;
+}
+
+/** Tuo JSON. replace=true tyhjentää ensin; muuten yhdistää (samat avaimet korvataan). Kaikki tai ei mitään. */
+export async function importAll(data, { replace = false } = {}) {
+  const count = validateBackup(data);
+  const names = Object.keys(STORES);
   await tx(names, 'readwrite', stores => {
     for (const name of names) {
       if (replace) stores[name].clear();
-      for (const row of data[name] || []) { stores[name].put(row); count++; }
+      for (const row of data[name] || []) stores[name].put(row);
     }
   });
   return count;
@@ -103,4 +139,12 @@ export async function importAll(data, { replace = false } = {}) {
 export async function clearAll() {
   const names = Object.keys(STORES);
   await tx(names, 'readwrite', stores => { for (const n of names) stores[n].clear(); });
+}
+
+/** Pyydä selainta olemaan tyhjentämättä tätä kantaa tilanpuutteessa. Best effort. */
+export async function requestPersistence() {
+  try {
+    if (navigator.storage && navigator.storage.persist) return await navigator.storage.persist();
+  } catch {}
+  return false;
 }

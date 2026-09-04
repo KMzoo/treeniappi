@@ -59,7 +59,7 @@ export async function render(root) {
         const c = dinnerCalc(params.proteinG, params.carbG);
         await put('meals', { ...m, params, kcal: c.kcal, proteinG: c.proteinG });
         toast('Päivitetty'); refresh();
-      }, 'Tallenna');
+      }, 'Tallenna', false);
     } else {
       const name = h('input', { type: 'text', value: m.name });
       const kcal = numInput({ value: m.kcal, min: 0 });
@@ -82,7 +82,7 @@ export async function render(root) {
   }
 
   /** Päivällisen lomake: proteiini g + hiilari g → live-laskenta. */
-  function dinnerForm(init, onSubmit, label = 'Lisää') {
+  function dinnerForm(init, onSubmit, label = 'Lisää', rememberDefaults = true) {
     const p = numInput({ value: init.proteinG, min: 0, step: 10 });
     const c = numInput({ value: init.carbG, min: 0, step: 10 });
     const out = h('p', { class: 'accent' });
@@ -95,9 +95,13 @@ export async function render(root) {
       out,
       h('p', { class: 'muted small' }, `Kana ${DINNER.proteinKcalPerG} kcal/g, ${DINNER.proteinPPerG} P/g · riisi/pasta ${DINNER.carbKcalPerG} kcal/g · vakio-osa ${DINNER.baseKcal} kcal`),
       h('button', { class: 'primary block', onclick: async () => {
+        if (p.validity.badInput || c.validity.badInput) { toast('Virheellinen luku', 2500); return; }
         const params = { proteinG: Number(p.value) || 0, carbG: Number(c.value) || 0 };
-        await setSetting('dinnerProteinG', params.proteinG);
-        await setSetting('dinnerCarbG', params.carbG);
+        if (rememberDefaults) {
+          await setSetting('dinnerProteinG', params.proteinG);
+          await setSetting('dinnerCarbG', params.carbG);
+          settings.dinnerProteinG = params.proteinG; settings.dinnerCarbG = params.carbG;
+        }
         await onSubmit(params);
         el.dispatchEvent(new Event('meal-done', { bubbles: true }));
       } }, label)
@@ -110,7 +114,6 @@ export async function render(root) {
     if (pr.dinner) {
       const body = dinnerForm({ proteinG: settings.dinnerProteinG ?? DINNER.defaultProteinG, carbG: settings.dinnerCarbG ?? DINNER.defaultCarbG }, async params => {
         const r = dinnerCalc(params.proteinG, params.carbG);
-        settings.dinnerProteinG = params.proteinG; settings.dinnerCarbG = params.carbG;
         await addMeal({ presetId: pr.id, name: pr.name, kcal: r.kcal, proteinG: r.proteinG, params });
       });
       const mm = modal(pr.name, body);
@@ -145,6 +148,7 @@ export async function render(root) {
   const addFree = async () => {
     const name = fName.value.trim();
     if (!name) { fName.focus(); return; }
+    if (fKcal.validity.badInput || fProt.validity.badInput) { toast('Virheellinen luku', 2500); return; }
     const m = { name, kcal: Number(fKcal.value) || 0, proteinG: Number(fProt.value) || 0 };
     await put('recent', { ...m, usedAt: new Date().toISOString() });
     await addMeal(m);

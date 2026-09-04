@@ -46,7 +46,9 @@ export async function render(root) {
   }
 
   // --- Selkärutiini ---
-  let day = routineDays.find(r => r.date === today) || { date: today, items: ROUTINE.map(() => false), allDone: false };
+  let day = routineDays.find(r => r.date === today) || { date: today, items: [], allDone: false };
+  day.items = ROUTINE.map((_, i) => !!(day.items && day.items[i]));
+  day.allDone = day.items.every(Boolean);
   const streakEl = h('span', { class: 'accent' });
   const list = h('div');
   const updateStreak = () => {

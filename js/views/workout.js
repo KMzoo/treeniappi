@@ -2,7 +2,7 @@
 import { TEMPLATES, EXERCISE_BY_ID } from '../seed.js';
 import { put, getAll } from '../db.js';
 import { todayStr, templateForDate, sessionId, lastEntryFor, formatSets, targetFromLast, formatDateShort, totalReps } from '../logic.js';
-import { h, append, clear, toast, formCardModal, numInput, debounce } from '../ui.js';
+import { h, append, clear, toast, formCardModal, numInput, confirmModal } from '../ui.js';
 import { gtgPanel } from './gtg.js';
 
 export async function render(root, { navigate }) {
@@ -26,11 +26,18 @@ export async function render(root, { navigate }) {
   const id = sessionId(date, template);
   const session = sessions.find(s => s.id === id) || { id, date, template, entries: [], done: false };
 
-  const save = debounce(async () => {
+  // Tallennus 250 ms viiveellä; flush kun appi menee taustalle, ettei viimeinen näppäily katoa.
+  let saveTimer = null;
+  const persist = async () => {
+    saveTimer = null;
     session.updatedAt = new Date().toISOString();
     if (!session.startedAt) session.startedAt = session.updatedAt;
     await put('sessions', session);
-  }, 250);
+  };
+  const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(persist, 250); };
+  const flush = () => { if (saveTimer) { clearTimeout(saveTimer); persist(); } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  window.addEventListener('pagehide', flush);
 
   const card = h('div', { class: `card ${session.done ? 'done' : ''}` });
   if (session.done) card.append(h('p', { class: 'ok small' }, `✓ Kirjattu ${new Date(session.completedAt).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })} — voit vielä muokata.`));
@@ -41,7 +48,8 @@ export async function render(root, { navigate }) {
     let entry = session.entries.find(e => e.exerciseId === ex.id);
     if (!entry) {
       // Oletusarvot: viime kerran luvut (spec), muuten tyhjä.
-      entry = { exerciseId: ex.id, variation: (last && last.variation) || ex.defaultVariation, sets: [] };
+      // prefilled=true kunnes käyttäjä koskee liikkeeseen; koskemattomat jätetään pois "Valmis"-vaiheessa (kysytään).
+      entry = { exerciseId: ex.id, variation: (last && last.variation) || ex.defaultVariation, sets: [], prefilled: !!last };
       const n = Math.max(item.sets, last ? last.sets.length : 0);
       for (let i = 0; i < n; i++) {
         const ls = last && last.sets[i];
@@ -53,6 +61,14 @@ export async function render(root, { navigate }) {
   }
 
   const finish = h('button', { class: 'ok block mt', onclick: async () => {
+    flush();
+    const untouched = session.entries.filter(e => e.prefilled && tpl.items.some(it => it.exerciseId === e.exerciseId));
+    if (untouched.length) {
+      const names = untouched.map(e => EXERCISE_BY_ID[e.exerciseId].name).join(', ');
+      const keep = await confirmModal(`Et muokannut: ${names}. Tallennetaanko ne viime kerran luvuilla? "Jätä pois" kirjaa ne tekemättömiksi.`, { ok: 'Tallenna kaikki', cancel: 'Jätä pois' });
+      if (!keep) for (const e of untouched) e.sets = e.sets.map(s => ({ ...s, reps: null }));
+      for (const e of untouched) delete e.prefilled;
+    }
     session.done = true;
     session.completedAt = new Date().toISOString();
     session.updatedAt = session.completedAt;
@@ -68,6 +84,8 @@ export async function render(root, { navigate }) {
 function exerciseBlock(ex, entry, last, save) {
   const unitLbl = ex.unit === 'seconds' ? 'sekuntia' : 'toistot';
   const setsEl = h('div', { class: `sets ${ex.weight ? '' : 'nowt'}` });
+  const block = h('div', { class: `ex ${entry.prefilled ? 'prefilled' : ''}` });
+  const touch = () => { if (entry.prefilled) { delete entry.prefilled; block.classList.remove('prefilled'); } };
 
   const renderSets = () => {
     clear(setsEl);
@@ -75,12 +93,12 @@ function exerciseBlock(ex, entry, last, save) {
     entry.sets.forEach((s, i) => {
       const ls = last && last.sets[i];
       setsEl.append(h('div', { class: 'lbl' }, `Setti ${i + 1}`));
-      setsEl.append(numInput({ value: s.reps == null ? '' : s.reps, placeholder: ls ? String(ls.reps) : '', min: 0, step: 1,
+      setsEl.append(numInput({ value: s.reps == null ? '' : s.reps, min: 0, step: 1,
         'aria-label': `${ex.name} setti ${i + 1} ${unitLbl}`,
-        oninput: e => { s.reps = e.target.value === '' ? null : Number(e.target.value); save(); } }));
+        oninput: e => { if (e.target.validity.badInput) return; s.reps = e.target.value === '' ? null : Number(e.target.value); touch(); save(); } }));
       if (ex.weight) setsEl.append(numInput({ value: s.weightKg == null ? '' : s.weightKg, placeholder: 'kg', min: 0, step: 0.5,
         'aria-label': `${ex.name} setti ${i + 1} paino kg`,
-        oninput: e => { s.weightKg = e.target.value === '' ? null : Number(e.target.value); save(); } }));
+        oninput: e => { if (e.target.validity.badInput) return; s.weightKg = e.target.value === '' ? null : Number(e.target.value); touch(); save(); } }));
     });
   };
   renderSets();
@@ -93,9 +111,9 @@ function exerciseBlock(ex, entry, last, save) {
         h('span', { class: 'accent' }, ` → tavoite ${targetFromLast(last)}`))
     : h('p', { class: 'last small muted' }, 'Ei aiempaa kirjausta.');
 
-  return h('div', { class: 'ex' },
+  return append(block, [
     h('button', { class: 'title', type: 'button', onclick: () => formCardModal(ex) }, ex.name),
-    h('select', { 'aria-label': 'Variaatio', style: { marginTop: '6px' }, onchange: e => { entry.variation = e.target.value; save(); } },
+    h('select', { 'aria-label': 'Variaatio', style: { marginTop: '6px' }, onchange: e => { entry.variation = e.target.value; touch(); save(); } },
       ex.variations.map(v => h('option', { value: v, selected: v === entry.variation }, v))),
     lastLine,
     setsEl,
@@ -103,11 +121,11 @@ function exerciseBlock(ex, entry, last, save) {
       h('button', { class: 'small', type: 'button', onclick: () => {
         const prev = entry.sets[entry.sets.length - 1];
         entry.sets.push({ reps: null, weightKg: prev && prev.weightKg != null ? prev.weightKg : null });
-        renderSets(); save();
+        renderSets(); touch(); save();
       } }, '+ setti'),
       h('button', { class: 'small ghost', type: 'button', onclick: () => {
-        if (entry.sets.length > 1) { entry.sets.pop(); renderSets(); save(); }
+        if (entry.sets.length > 1) { entry.sets.pop(); renderSets(); touch(); save(); }
       } }, '− setti')
     )
-  );
+  ]);
 }

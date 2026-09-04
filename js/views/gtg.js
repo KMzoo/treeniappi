@@ -18,7 +18,8 @@ export async function gtgPanel(date, { onChange } = {}) {
     e.sets = Array.from({ length: n }, () => ({ reps: null }));
     session.done = GTG.every(g => countOf(g.id) >= g.target);
     session.updatedAt = new Date().toISOString();
-    if (session.done && !session.completedAt) session.completedAt = session.updatedAt;
+    if (session.done) { if (!session.completedAt) session.completedAt = session.updatedAt; }
+    else session.completedAt = null;
     await put('sessions', session);
     draw();
     onChange && onChange(session);
@@ -35,9 +36,9 @@ export async function gtgPanel(date, { onChange } = {}) {
           ex ? h('button', { class: 'title link', onclick: () => formCardModal(ex) }, g.name, ' ⓘ') : h('b', {}, g.name),
           h('div', { class: 'muted small' }, g.hint)
         ),
-        h('button', { class: 'icon ghost', 'aria-label': 'Vähennä', onclick: () => setCount(g.id, n - 1), disabled: n === 0 }, '−'),
+        h('button', { class: 'icon ghost', 'aria-label': 'Vähennä', onclick: () => setCount(g.id, countOf(g.id) - 1), disabled: n === 0 }, '−'),
         h('div', { class: `n ${n >= g.target ? 'ok' : ''}` }, `${n}/${g.target}`),
-        h('button', { class: `tap ${n >= g.target ? 'ok' : 'primary'}`, onclick: () => setCount(g.id, n + 1) }, '+1')
+        h('button', { class: `tap ${n >= g.target ? 'ok' : 'primary'}`, onclick: () => setCount(g.id, countOf(g.id) + 1) }, '+1')
       ));
     }
   }
