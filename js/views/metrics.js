@@ -114,6 +114,7 @@ export async function render(root) {
     try {
       const data = JSON.parse(await f.text());
       const replace = await confirmModal('Korvataanko nykyinen data kokonaan varmuuskopiolla? "Yhdistä" lisää varmuuskopion rivit nykyiseen dataan.', { ok: 'Korvaa', cancel: 'Yhdistä', danger: true });
+      if (replace === null) { toast('Tuonti peruttu'); e.target.value = ''; return; }
       const n = await importAll(data, { replace });
       toast(`Tuotu ${n} riviä`);
       location.reload();

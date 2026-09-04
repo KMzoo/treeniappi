@@ -50,7 +50,7 @@ export function modal(title, body, { onClose } = {}) {
   return { close, box };
 }
 
-/** Oma vahvistus (ei window.confirm). */
+/** Oma vahvistus (ei window.confirm). true = ok, false = cancel-nappi, null = suljettiin valitsematta. */
 export function confirmModal(message, { ok = 'Kyllä', cancel = 'Peruuta', danger = false } = {}) {
   return new Promise(resolve => {
     let decided = false;
@@ -60,7 +60,7 @@ export function confirmModal(message, { ok = 'Kyllä', cancel = 'Peruuta', dange
         h('button', { onclick: () => { decided = true; m.close(); resolve(false); } }, cancel),
         h('button', { class: danger ? 'danger' : 'primary', onclick: () => { decided = true; m.close(); resolve(true); } }, ok)
       )
-    ), { onClose: () => { if (!decided) resolve(false); } });
+    ), { onClose: () => { if (!decided) resolve(null); } });
   });
 }
 
@@ -88,11 +88,6 @@ export function bar(value, target) {
 
 export function numInput(attrs = {}) {
   return h('input', { type: 'number', inputmode: 'decimal', ...attrs });
-}
-
-export function debounce(fn, ms = 300) {
-  let t;
-  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
 /** Lataa tiedosto selaimesta. */

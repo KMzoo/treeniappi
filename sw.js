@@ -1,11 +1,14 @@
 // Service worker: offline-ensin.
 // - Kaikki pyynnöt: cache-first (toimii ilman verkkoa).
 // - Joka avauksella (navigation) haetaan KOKO tiedostolista ohi HTTP-välimuistin ja kirjoitetaan
-//   välimuistiin vasta kun kaikki onnistuivat → ei sekaversioita, ja push näkyy seuraavalla avauksella.
-// - waitUntil pitää workerin hengissä päivityksen ajan.
+//   välimuistiin vasta kun kaikki onnistuivat → push näkyy seuraavalla avauksella, eikä puolikas
+//   päivitys (verkko katkeaa kesken) jää voimaan. Kirjoitus tapahtuu latauksen rinnalla, joten
+//   saman avauksen sisällä on pieni ikkuna jossa moduulit voivat tulla eri versioista.
+// - Uudelleenohjatut tai vieraan originin vastaukset (captive portal) hylätään kokonaan.
+// - waitUntil pitää workerin hengissä päivityksen ajan; fetch-timeout estää ikuisen roikkumisen.
+// - skipWaiting+claim ottaa sivun heti haltuun; turvallista koska kaikki importit ovat staattisia.
 const CACHE = 'treeniappi-v1';
 const ASSETS = [
-  './',
   './index.html',
   './manifest.webmanifest',
   './css/style.css',
@@ -24,12 +27,13 @@ const ASSETS = [
   './icons/icon-512.png'
 ];
 
-const freshRequest = url => new Request(url, { cache: 'reload' });
+const freshRequest = url => new Request(url, { cache: 'reload', signal: AbortSignal.timeout(15000) });
+const genuine = r => r && r.ok && !r.redirected && new URL(r.url).origin === self.location.origin;
 
-/** Hae kaikki tiedostot verkosta; kirjoita välimuistiin vain jos kaikki onnistuivat. */
+/** Hae kaikki tiedostot verkosta; kirjoita välimuistiin vain jos kaikki onnistuivat aidosti. */
 async function refreshAll() {
   const responses = await Promise.all(ASSETS.map(u => fetch(freshRequest(u))));
-  if (responses.some(r => !r || !r.ok)) throw new Error('Päivitys epäonnistui');
+  if (!responses.every(genuine)) throw new Error('Päivitys epäonnistui');
   const cache = await caches.open(CACHE);
   await Promise.all(ASSETS.map((u, i) => cache.put(u, responses[i])));
 }

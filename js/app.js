@@ -11,6 +11,7 @@ const VIEWS = { tanaan: today, treeni: workout, ruoka: food, mittarit: metrics }
 const root = document.getElementById('view');
 let renderedDate = todayStr();
 let seq = 0; // render-token: vain uusin route() saa lisätä DOM:iin
+let routeAbort = null; // näkymän kuuntelijat puretaan kun näkymä vaihtuu
 
 export function navigate(name) { location.hash = '#' + name; }
 
@@ -19,9 +20,11 @@ async function route() {
   const view = VIEWS[name] || today;
   for (const a of document.querySelectorAll('#tabs a')) a.classList.toggle('active', a.dataset.view === (VIEWS[name] ? name : 'tanaan'));
   const token = ++seq;
+  if (routeAbort) routeAbort.abort();
+  routeAbort = new AbortController();
   const mount = document.createElement('div');
   try {
-    await view.render(mount, { navigate });
+    await view.render(mount, { navigate, signal: routeAbort.signal });
   } catch (err) {
     console.error(err);
     clear(mount).append(h('div', { class: 'card' }, h('h2', { class: 'bad' }, 'Virhe'), h('p', {}, String(err && err.message || err))));

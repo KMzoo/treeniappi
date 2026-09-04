@@ -5,7 +5,7 @@ import { todayStr, templateForDate, sessionId, lastEntryFor, formatSets, targetF
 import { h, append, clear, toast, formCardModal, numInput, confirmModal } from '../ui.js';
 import { gtgPanel } from './gtg.js';
 
-export async function render(root, { navigate }) {
+export async function render(root, { navigate, signal }) {
   const date = todayStr();
   const q = new URLSearchParams((location.hash.split('?')[1]) || '');
   const todays = templateForDate(date);
@@ -35,9 +35,9 @@ export async function render(root, { navigate }) {
     await put('sessions', session);
   };
   const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(persist, 250); };
-  const flush = () => { if (saveTimer) { clearTimeout(saveTimer); persist(); } };
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
-  window.addEventListener('pagehide', flush);
+  const flush = () => { if (saveTimer) { clearTimeout(saveTimer); return persist().catch(err => console.error('save failed', err)); } return Promise.resolve(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); }, { signal });
+  window.addEventListener('pagehide', flush, { signal });
 
   const card = h('div', { class: `card ${session.done ? 'done' : ''}` });
   if (session.done) card.append(h('p', { class: 'ok small' }, `✓ Kirjattu ${new Date(session.completedAt).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' })} — voit vielä muokata.`));
@@ -61,11 +61,12 @@ export async function render(root, { navigate }) {
   }
 
   const finish = h('button', { class: 'ok block mt', onclick: async () => {
-    flush();
-    const untouched = session.entries.filter(e => e.prefilled && tpl.items.some(it => it.exerciseId === e.exerciseId));
+    await flush();
+    const untouched = session.entries.filter(e => e.prefilled);
     if (untouched.length) {
       const names = untouched.map(e => EXERCISE_BY_ID[e.exerciseId].name).join(', ');
       const keep = await confirmModal(`Et muokannut: ${names}. Tallennetaanko ne viime kerran luvuilla? "Jätä pois" kirjaa ne tekemättömiksi.`, { ok: 'Tallenna kaikki', cancel: 'Jätä pois' });
+      if (keep === null) return; // suljettiin ilman valintaa → ei merkitä valmiiksi
       if (!keep) for (const e of untouched) e.sets = e.sets.map(s => ({ ...s, reps: null }));
       for (const e of untouched) delete e.prefilled;
     }
@@ -95,10 +96,12 @@ function exerciseBlock(ex, entry, last, save) {
       setsEl.append(h('div', { class: 'lbl' }, `Setti ${i + 1}`));
       setsEl.append(numInput({ value: s.reps == null ? '' : s.reps, min: 0, step: 1,
         'aria-label': `${ex.name} setti ${i + 1} ${unitLbl}`,
-        oninput: e => { if (e.target.validity.badInput) return; s.reps = e.target.value === '' ? null : Number(e.target.value); touch(); save(); } }));
+        oninput: e => { if (e.target.validity.badInput) return; s.reps = e.target.value === '' ? null : Number(e.target.value); touch(); save(); },
+        onchange: e => { if (e.target.validity.badInput) { e.target.value = s.reps == null ? '' : s.reps; toast('Virheellinen luku', 2000); } } }));
       if (ex.weight) setsEl.append(numInput({ value: s.weightKg == null ? '' : s.weightKg, placeholder: 'kg', min: 0, step: 0.5,
         'aria-label': `${ex.name} setti ${i + 1} paino kg`,
-        oninput: e => { if (e.target.validity.badInput) return; s.weightKg = e.target.value === '' ? null : Number(e.target.value); touch(); save(); } }));
+        oninput: e => { if (e.target.validity.badInput) return; s.weightKg = e.target.value === '' ? null : Number(e.target.value); touch(); save(); },
+        onchange: e => { if (e.target.validity.badInput) { e.target.value = s.weightKg == null ? '' : s.weightKg; toast('Virheellinen luku', 2000); } } }));
     });
   };
   renderSets();
