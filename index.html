@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Treeniappi</title>
+  <meta name="description" content="Henkilökohtainen treeni- ja ruokapäiväkirja">
+  <meta name="theme-color" content="#111318">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main id="view" aria-live="polite"></main>
+  <nav id="tabs" aria-label="Näkymät">
+    <a href="#tanaan" data-view="tanaan"><span class="ico">☀</span>Tänään</a>
+    <a href="#treeni" data-view="treeni"><span class="ico">⚡</span>Treeni</a>
+    <a href="#ruoka" data-view="ruoka"><span class="ico">🍽</span>Ruoka</a>
+    <a href="#mittarit" data-view="mittarit"><span class="ico">📈</span>Mittarit</a>
+  </nav>
+  <div id="toast" role="status"></div>
+  <noscript>Treeniappi tarvitsee JavaScriptin.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
