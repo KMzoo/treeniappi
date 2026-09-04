@@ -154,7 +154,7 @@ select { appearance: none; -webkit-appearance: none; background-image: linear-gr
 /* Meals */
 .meal { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .meal:last-child { border-bottom: none; }
-.meal .info { flex: 1; min-width: 0; }
+.meal .info { flex: 1; min-width: 0; display: block; text-align: left; color: var(--text); }
 .meal .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meal .nums { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
 

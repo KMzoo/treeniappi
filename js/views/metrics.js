@@ -30,7 +30,7 @@ export async function render(root) {
       await putMetric(type, today, v);
     }
     toast('Tallennettu');
-    reload();
+    await reload();
   }
 
   // --- Tänään ---
