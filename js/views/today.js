@@ -32,9 +32,13 @@ export async function render(root) {
       h('div', {}, tpl.items.map(it => {
         const ex = EXERCISE_BY_ID[it.exerciseId];
         const last = lastEntryFor(sessions, ex.id, today);
+        const todayEntry = done && (session.entries || []).find(e => e.exerciseId === ex.id);
+        const todaySets = todayEntry ? todayEntry.sets.filter(s => s.reps != null) : [];
         return h('div', { class: 'row between', style: { padding: '5px 0' } },
           h('button', { class: 'link', onclick: () => formCardModal(ex) }, ex.name),
-          h('span', { class: 'muted small' }, last ? `${formatSets(last.sets, ex.unit)} → ${targetFromLast(last)}` : `${it.sets} settiä`)
+          h('span', { class: `small ${todaySets.length ? 'ok' : 'muted'}` },
+            todaySets.length ? formatSets(todaySets, ex.unit)
+              : last ? `${formatSets(last.sets, ex.unit)} → ${targetFromLast(last)}` : `${it.sets} settiä`)
         );
       })),
       h('a', { class: `btn block mt ${done ? '' : 'primary'}`, href: '#treeni' }, done ? 'Katso / muokkaa' : 'Kirjaa treeni →')
